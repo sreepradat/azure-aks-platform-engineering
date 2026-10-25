@@ -67,7 +67,7 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Set AKS context
-        uses: azure/aks-set-context@v4
+        uses: azure/aks-set-context@v5
         with:
           resource-group: ${{ inputs.resource-group }}
           cluster-name: ${{ inputs.cluster-name }}
