@@ -1,0 +1,43 @@
+name: Infra
+
+# Pull requests: terraform plan only.
+# Push to main: plan, then apply once the "dev" environment approval is granted.
+# Manual run: plan only.
+
+on:
+  pull_request:
+    paths:
+      - terraform/**
+      - .github/workflows/infra.yml
+      - .github/workflows/reusable-terraform.yml
+  push:
+    branches: [main]
+    paths:
+      - terraform/**
+      - .github/workflows/infra.yml
+      - .github/workflows/reusable-terraform.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: infra-dev
+  cancel-in-progress: false
+
+jobs:
+  terraform-dev:
+    name: Terraform (dev)
+    uses: ./.github/workflows/reusable-terraform.yml
+    with:
+      working-directory: terraform/environments/dev
+      environment: dev
+      apply: ${{ github.event_name == 'push' }}
+      tfstate-resource-group: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+      tfstate-storage-account: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+      tfstate-container: ${{ vars.TFSTATE_CONTAINER }}
+      tfstate-key: dev.terraform.tfstate
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}

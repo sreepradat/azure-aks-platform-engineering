@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sample-app
+description: Sample Flask service deployed to AKS with Azure Workload Identity and Key Vault secrets
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

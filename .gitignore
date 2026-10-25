@@ -1,0 +1,34 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+*.tfvars.json
+tfplan
+plan.txt
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+backend.hcl
+# Keep the provider lock file in version control: do NOT ignore .terraform.lock.hcl
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+
+# Helm
+helm/**/charts/
+*.tgz
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

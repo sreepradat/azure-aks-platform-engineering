@@ -1,0 +1,8 @@
+# Copy to backend.hcl (git-ignored) using the values printed by scripts/bootstrap-state.sh.
+# Initialise with: terraform init -backend-config=backend.hcl
+
+resource_group_name  = "rg-tfstate-aksplat"
+storage_account_name = "sttfstateaksplatxxxxxx"
+container_name       = "tfstate"
+key                  = "dev.terraform.tfstate"
+use_azuread_auth     = true

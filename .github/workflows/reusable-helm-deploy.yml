@@ -1,0 +1,116 @@
+name: Reusable - Deploy Helm chart to AKS
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment (controls approvals and the OIDC subject)
+        type: string
+        required: true
+      resource-group:
+        type: string
+        required: true
+      cluster-name:
+        type: string
+        required: true
+      namespace:
+        type: string
+        default: sample-app
+      release-name:
+        type: string
+        default: sample-app
+      chart-path:
+        type: string
+        default: helm/sample-app
+      image-repository:
+        type: string
+        required: true
+      image-tag:
+        type: string
+        required: true
+      workload-identity-client-id:
+        type: string
+        required: true
+      key-vault-name:
+        type: string
+        required: true
+      azure-client-id:
+        type: string
+        required: true
+      azure-tenant-id:
+        type: string
+        required: true
+      azure-subscription-id:
+        type: string
+        required: true
+
+jobs:
+  deploy:
+    name: Helm upgrade --install
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Azure (OIDC, no stored secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ inputs.azure-client-id }}
+          tenant-id: ${{ inputs.azure-tenant-id }}
+          subscription-id: ${{ inputs.azure-subscription-id }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ inputs.resource-group }}
+          cluster-name: ${{ inputs.cluster-name }}
+
+      - name: Deploy
+        env:
+          RELEASE: ${{ inputs.release-name }}
+          CHART_PATH: ${{ inputs.chart-path }}
+          NAMESPACE: ${{ inputs.namespace }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          IMAGE_REPOSITORY: ${{ inputs.image-repository }}
+          IMAGE_TAG: ${{ inputs.image-tag }}
+          WI_CLIENT_ID: ${{ inputs.workload-identity-client-id }}
+          TENANT_ID: ${{ inputs.azure-tenant-id }}
+          KEY_VAULT_NAME: ${{ inputs.key-vault-name }}
+        run: |
+          helm upgrade --install "$RELEASE" "$CHART_PATH" \
+            --namespace "$NAMESPACE" --create-namespace \
+            --set-string environment="$ENVIRONMENT" \
+            --set-string image.repository="$IMAGE_REPOSITORY" \
+            --set-string image.tag="$IMAGE_TAG" \
+            --set workloadIdentity.enabled=true \
+            --set-string workloadIdentity.clientId="$WI_CLIENT_ID" \
+            --set-string workloadIdentity.tenantId="$TENANT_ID" \
+            --set-string workloadIdentity.keyVaultName="$KEY_VAULT_NAME" \
+            --atomic --wait --timeout 5m
+
+      - name: Report endpoint
+        env:
+          RELEASE: ${{ inputs.release-name }}
+          NAMESPACE: ${{ inputs.namespace }}
+          IMAGE_TAG: ${{ inputs.image-tag }}
+        run: |
+          ip=""
+          for _ in $(seq 1 30); do
+            ip=$(kubectl get svc "$RELEASE" -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            [ -n "$ip" ] && break
+            sleep 10
+          done
+          {
+            echo "### Deployed"
+            echo ""
+            echo "- Image tag: \`${IMAGE_TAG}\`"
+            echo "- Endpoint: http://${ip:-pending}/"
+          } >> "$GITHUB_STEP_SUMMARY"
+          kubectl get pods -n "$NAMESPACE"

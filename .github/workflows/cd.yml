@@ -1,0 +1,50 @@
+name: CD
+
+# Builds the image, scans it, pushes it to ACR and deploys it to AKS.
+# Runs on every merge to main that touches the app or the chart, or manually.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/**
+      - helm/**
+      - .github/workflows/cd.yml
+      - .github/workflows/reusable-docker-build.yml
+      - .github/workflows/reusable-helm-deploy.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and push image
+    uses: ./.github/workflows/reusable-docker-build.yml
+    with:
+      image-name: sample-app
+      acr-name: ${{ vars.ACR_NAME }}
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  deploy-dev:
+    name: Deploy to dev
+    needs: build
+    uses: ./.github/workflows/reusable-helm-deploy.yml
+    with:
+      environment: dev
+      resource-group: ${{ vars.RESOURCE_GROUP }}
+      cluster-name: ${{ vars.AKS_NAME }}
+      image-repository: ${{ needs.build.outputs.image-repository }}
+      image-tag: ${{ needs.build.outputs.image-tag }}
+      workload-identity-client-id: ${{ vars.WORKLOAD_IDENTITY_CLIENT_ID }}
+      key-vault-name: ${{ vars.KEY_VAULT_NAME }}
+      azure-client-id: ${{ vars.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}

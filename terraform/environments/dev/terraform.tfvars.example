@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (git-ignored) and adjust. Every value is optional.
+
+location       = "centralindia"
+node_vm_size   = "Standard_B2s"
+node_min_count = 1
+node_max_count = 2

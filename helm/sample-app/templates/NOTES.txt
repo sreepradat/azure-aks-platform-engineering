@@ -1,0 +1,14 @@
+{{ include "sample-app.fullname" . }} has been deployed to namespace {{ .Release.Namespace }}.
+
+Get the public IP (it can take a minute or two to be assigned):
+
+  kubectl get svc {{ include "sample-app.fullname" . }} -n {{ .Release.Namespace }} -w
+
+Then test it:
+
+  curl http://<EXTERNAL-IP>/
+  curl http://<EXTERNAL-IP>/healthz
+
+Or without a public IP:
+
+  kubectl port-forward svc/{{ include "sample-app.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}

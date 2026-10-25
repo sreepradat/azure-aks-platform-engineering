@@ -1,0 +1,68 @@
+replicaCount: 2
+
+image:
+  # Overridden by the CD workflow with <acr-name>.azurecr.io/sample-app
+  repository: sample-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  # Must match the subject of the federated identity credential created by Terraform.
+  name: sample-app
+
+environment: dev
+
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8080
+
+# Azure Workload Identity + Secrets Store CSI driver (Key Vault).
+# Disabled by default so the chart also works without Azure.
+workloadIdentity:
+  enabled: false
+  clientId: ""
+  tenantId: ""
+  keyVaultName: ""
+  secretName: app-message
+  mountPath: /mnt/secrets
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

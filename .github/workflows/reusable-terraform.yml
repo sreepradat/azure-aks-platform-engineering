@@ -1,0 +1,162 @@
+name: Reusable - Terraform plan and apply
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        required: true
+      environment:
+        description: GitHub environment used by the apply job (add required reviewers for manual approval)
+        type: string
+        required: true
+      apply:
+        description: Run the apply job after a successful plan
+        type: boolean
+        default: false
+      terraform-version:
+        type: string
+        default: "1.9.8"
+      tfstate-resource-group:
+        type: string
+        required: true
+      tfstate-storage-account:
+        type: string
+        required: true
+      tfstate-container:
+        type: string
+        required: true
+      tfstate-key:
+        type: string
+        required: true
+      azure-client-id:
+        type: string
+        required: true
+      azure-tenant-id:
+        type: string
+        required: true
+      azure-subscription-id:
+        type: string
+        required: true
+
+env:
+  ARM_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
+  ARM_TENANT_ID: ${{ inputs.azure-tenant-id }}
+  ARM_USE_AZUREAD: "true"
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Log in to Azure (OIDC, no stored secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ inputs.azure-client-id }}
+          tenant-id: ${{ inputs.azure-tenant-id }}
+          subscription-id: ${{ inputs.azure-subscription-id }}
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive ../..
+
+      - name: Terraform init
+        env:
+          TFSTATE_RG: ${{ inputs.tfstate-resource-group }}
+          TFSTATE_SA: ${{ inputs.tfstate-storage-account }}
+          TFSTATE_CONTAINER: ${{ inputs.tfstate-container }}
+          TFSTATE_KEY: ${{ inputs.tfstate-key }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${TFSTATE_RG}" \
+            -backend-config="storage_account_name=${TFSTATE_SA}" \
+            -backend-config="container_name=${TFSTATE_CONTAINER}" \
+            -backend-config="key=${TFSTATE_KEY}"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -input=false -lock-timeout=5m -out=tfplan
+
+      - name: Publish plan summary
+        run: |
+          terraform show -no-color tfplan > plan.txt
+          {
+            echo "### Terraform plan"
+            echo ""
+            echo '```'
+            head -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan
+        if: inputs.apply
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ inputs.working-directory }}/tfplan
+          retention-days: 1
+
+  apply:
+    name: Apply
+    needs: plan
+    if: inputs.apply
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Log in to Azure (OIDC, no stored secrets)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ inputs.azure-client-id }}
+          tenant-id: ${{ inputs.azure-tenant-id }}
+          subscription-id: ${{ inputs.azure-subscription-id }}
+
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ inputs.working-directory }}
+
+      - name: Terraform init
+        env:
+          TFSTATE_RG: ${{ inputs.tfstate-resource-group }}
+          TFSTATE_SA: ${{ inputs.tfstate-storage-account }}
+          TFSTATE_CONTAINER: ${{ inputs.tfstate-container }}
+          TFSTATE_KEY: ${{ inputs.tfstate-key }}
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=${TFSTATE_RG}" \
+            -backend-config="storage_account_name=${TFSTATE_SA}" \
+            -backend-config="container_name=${TFSTATE_CONTAINER}" \
+            -backend-config="key=${TFSTATE_KEY}"
+
+      - name: Terraform apply
+        run: terraform apply -input=false -lock-timeout=5m tfplan
